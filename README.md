@@ -1,1 +1,1 @@
-# podsy -- A console-based podcatcher 
+# podsy --- A console-based podcatcher 
