@@ -85,7 +85,7 @@ def main():
     if 'XDG_DATA_HOME' in os.environ :
         store = os.path.join(os.environ['XDG_DATA_HOME'],"potsy")
     if not os.path.isdir(store) :
-        os.mkdir(store,0o600)
+        os.mkdir(store,0o700)
 
 # Let's do this thing.
     curses.wrapper(interface)
