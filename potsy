@@ -4,8 +4,12 @@ import curses
 import argparse
 import configparser
 import feedparser
+import pickle
 
-def interface(scr):
+def interface(scr, podcasts):
+    pwin = {}
+    ewin = {}
+    dwin = {}
     scr.clear()
     scr.refresh()
     curses.start_color()
@@ -14,6 +18,7 @@ def interface(scr):
     curses.init_pair(1, curses.COLOR_CYAN, -1)
     curses.init_pair(2, curses.COLOR_MAGENTA, -1)
     curses.init_pair(3, curses.COLOR_YELLOW, -1)
+    curses.init_pair(4, curses.COLOR_WHITE, -1)
 
     key_input = 0
 
@@ -23,56 +28,103 @@ def interface(scr):
         scr.clear()
         curses.curs_set(0)
         height, width = scr.getmaxyx()
-        playerwidth = 4
-        height = height - playerwidth
+        player_height = 2
+        height = height - player_height
 
-        vert_divider = width // 3
+        # podcast window dimensions
+        pwin['height'] = height
+        pwin['width'] = width // 3
+        pwin['x'] = 0
+        pwin['y'] = 0
+        
+        # episode list window dimensions
+        ewin['height'] = height 
+        ewin['width'] = width - pwin['width']
+        ewin['x'] = pwin['width']
+        ewin['y'] = 0
 
         # window to hold podcast list
-        podlist = scr.subwin(height,vert_divider,0,0)
+        podlist = scr.subwin(pwin['height'],pwin['width'],pwin['y'],pwin['x'])
 
         # list of episodes for each podcast
-        epslist = scr.subwin(height // 2, width - vert_divider, 0, vert_divider)
+        epslist = scr.subwin(ewin['height'],ewin['width'],ewin['y'],ewin['x'])
 
-        # episode summary information
-        desclist = scr.subwin(height - height // 2, width - vert_divider, height // 2, vert_divider)
-
+        # write out list of podcasts
         podlist.attron(curses.color_pair(1))
         podlist.box(0,0)
-        podlist.addstr(0,1," podcasts ")
+        podlist.addstr(0,2," podcasts ")
+        podlist.addstr(3,2,"{} {}".format(podlist.getyx()[0],podlist.getyx()[1]))
         podlist.attroff(curses.color_pair(1))
 
+        podlist.attron(curses.color_pair(4))
+        podcast_list = sorted(podcasts.keys())
+        for i in podcast_list:
+            podlist.addstr(podcast_list.index(i)+1,2,i[:pwin['width']])
+        podlist.attroff(curses.color_pair(4))
+            
+        # write out episode list for selected podcast
         epslist.attron(curses.color_pair(2))
         epslist.box(0,0)
-        epslist.addstr(0,1," episodes ")
+        epslist.addstr(0,2," episodes ")
         epslist.attroff(curses.color_pair(2))
 
-        desclist.attron(curses.color_pair(3))
-        desclist.box(0,0)
-        desclist.addstr(0,1," episode description ")
-        desclist.attroff(curses.color_pair(3))
-
+        epslist.attron(curses.color_pair(4))
+        episodes = podcasts['Reason Podcast'].entries
+        for i in episodes :
+             if episodes.index(i) < ewin['height'] - 2 :
+                 epslist.addstr(episodes.index(i)+1,2,i['title'][:ewin['width']-3])
+        epslist.attroff(curses.color_pair(4))
 
         scr.refresh()
         key_input = scr.getch()
 
-def feedfetcher(url):
+def add_feed(url,podcasts):
     d = feedparser.parse(url)
-    return d
+    podcasts[d['feed']['title']] = d
+    save_state(podcasts)
+    
+def save_state(podcasts):
+    """ Initialise podcast data pickle if it doesn't exist, else stuff into jar """
+    store = find_storage()
+    gherkin = os.path.join(store,"podcasts.db")
+    if not os.path.isfile(gherkin) :
+        with open(gherkin,'wb') as f:
+            pickle.dump(podcasts,f)
+    else:
+        with open(gherkin,'wb') as f:
+            pickle.dump(podcasts,f)
+
+def restore_state(podcasts):
+    """ Initialise podcast data pickle if it doesn't exist, else remove from jar """
+    store = find_storage()
+    gherkin = os.path.join(store,"podcasts.db")
+    if not os.path.isfile(gherkin) :
+        with open(gherkin,'wb') as f:
+            pickle.dump(podcasts,f)
+    else:
+        with open(gherkin,'rb') as f:
+            podcasts = pickle.load(f)
+
+def find_storage():
+    """ Where should we store stuff (downloaded episodes, rss database, &cet.)? """
+    store = os.path.expanduser('~/.local/share/potsy')
+    if 'XDG_DATA_HOME' in os.environ :
+        store = os.path.join(os.environ['XDG_DATA_HOME'],"potsy")
+    if not os.path.isdir(store) :
+        os.mkdir(store,0o700)
+    return store
 
 def main():
     env = {}
+    podcasts = {}
     parser = argparse.ArgumentParser(description="A curses-based podcatcher")
     parser.add_argument("-c", "--config", help="use this config file instead")
     args = parser.parse_args()
     config = configparser.ConfigParser()
 
-    d = feedfetcher('https://feedpress.me/ReasonAudio')
-    print(d['feed']['summary'])
-
 # Let's figure out where the hell our config file is hiding
     conffile = os.path.expanduser('~/.config/potsy/potsy.conf')
-    if os.path.isfile(args.config) :
+    if args.config is not None and os.path.isfile(args.config) :
         conffile = args.config
     elif 'XDG_CONFIG_HOME' in os.environ :
         p = os.path.join(os.environ['XDG_CONFIG_HOME'],"potsy/potsy.conf")
@@ -80,15 +132,10 @@ def main():
             conffile = p
     config.read(conffile)
 
-# Where should we store stuff (downloaded episodes, rss database, &cet.)?
-    store = os.path.expanduser('~/.local/share/potsy')
-    if 'XDG_DATA_HOME' in os.environ :
-        store = os.path.join(os.environ['XDG_DATA_HOME'],"potsy")
-    if not os.path.isdir(store) :
-        os.mkdir(store,0o700)
-
+    restore_state(podcasts)
+    add_feed('https://feedpress.me/ReasonAudio', podcasts)
 # Let's do this thing.
-    curses.wrapper(interface)
+    curses.wrapper(interface, podcasts)
 
 if __name__ == "__main__":
     main()
