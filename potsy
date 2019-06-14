@@ -15,10 +15,17 @@ def interface(scr, podcasts):
     curses.start_color()
     curses.use_default_colors()
 
+    cursor_x = 1
+    cursor_y = 1
+    select_podcast = 0
+    select_episode = 0
+
     curses.init_pair(1, curses.COLOR_CYAN, -1)
     curses.init_pair(2, curses.COLOR_MAGENTA, -1)
     curses.init_pair(3, curses.COLOR_YELLOW, -1)
     curses.init_pair(4, curses.COLOR_WHITE, -1)
+    curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_YELLOW)
+    curses.init_pair(6, curses.COLOR_WHITE, curses.COLOR_MAGENTA)
 
     key_input = 0
 
@@ -53,13 +60,16 @@ def interface(scr, podcasts):
         podlist.attron(curses.color_pair(1))
         podlist.box(0,0)
         podlist.addstr(0,2," podcasts ")
-        podlist.addstr(3,2,"{} {}".format(podlist.getyx()[0],podlist.getyx()[1]))
+        podlist.addstr(3,2,"{} {}".format(cursor_x,cursor_y))
         podlist.attroff(curses.color_pair(1))
 
         podlist.attron(curses.color_pair(4))
         podcast_list = sorted(podcasts.keys())
-        for i in podcast_list:
-            podlist.addstr(podcast_list.index(i)+1,2,i[:pwin['width']])
+        for i in podcast_list[:pwin['height']-2]:
+            if podcast_list.index(i) == select_podcast :
+                podlist.addnstr(podcast_list.index(i)+1,2,i,pwin['width'],curses.color_pair(6))
+            else:
+                podlist.addnstr(podcast_list.index(i)+1,2,i,pwin['width'])
         podlist.attroff(curses.color_pair(4))
             
         # write out episode list for selected podcast
@@ -70,11 +80,31 @@ def interface(scr, podcasts):
 
         epslist.attron(curses.color_pair(4))
         episodes = podcasts['Reason Podcast'].entries
-        for i in episodes :
-             if episodes.index(i) < ewin['height'] - 2 :
-                 epslist.addstr(episodes.index(i)+1,2,i['title'][:ewin['width']-3])
+        for i in episodes[:ewin['height']-2] :
+            if episodes.index(i) == select_episode :
+                epslist.addnstr(episodes.index(i)+1,2,i['title'],ewin['width']-3,curses.color_pair(6))
+            else:
+                epslist.addnstr(episodes.index(i)+1,2,i['title'],ewin['width']-3)
         epslist.attroff(curses.color_pair(4))
 
+        if key_input in (curses.KEY_DOWN, ord('j')):
+            cursor_y = cursor_y + 1
+        elif key_input in (curses.KEY_UP, ord('k')):
+            cursor_y = cursor_y - 1
+        elif key_input in (curses.KEY_RIGHT, ord('l')):
+            cursor_x = ewin['x']
+            cursor_y = 1
+        elif key_input in (curses.KEY_LEFT, ord('h')):
+            cursor_x = pwin['x']
+            cursor_y = 1
+
+        # make sure cursor doesn't leave the window
+        cursor_x = max(1, cursor_x)
+        cursor_x = min(cursor_x, width - 1)
+        cursor_y = max(1, cursor_y)
+        cursor_y = min(cursor_y, height - 1)
+
+        scr.move(cursor_y,cursor_x)
         scr.refresh()
         key_input = scr.getch()
 
