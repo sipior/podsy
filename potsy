@@ -1,12 +1,13 @@
 #!env python
-import os
-import curses
 import argparse
 import configparser
+import curses
+import datetime
 import feedparser
+import os
 import pickle
 
-class windowpane:
+class Windowpane:
     """A class of convenience for specifying window dimensions."""
     def __init__(self,height,width,yoffset,xoffset):
         self.height = height
@@ -14,11 +15,47 @@ class windowpane:
         self.y = yoffset
         self.x = xoffset
 
-class cursor:
+class Cursor:
     """Just a dumb class to hold the coördinates of the cursor"""
     def __init__(self,x,y):
         self.x = x
         self.y = y
+
+class Episode:
+    """Corresponds to a distinct podcast episode"""
+    def __init__(self,index,link):
+        # A local index, distinct from the entry ID from the feed
+        self.id = index
+        # The episode entry in the dictionary returned by feedparser
+        self.entry = link
+        # Whether the entry has been watched/heard
+        self.viewed = False
+        self.deleted = False
+        # Whether the entry had been downloaded
+        self.downloaded = False
+
+class Podcast:
+    """Corresponds to a given RSS/Atom feed"""
+    def __init__(self,url):
+        self.url = url
+        self.title = None
+        self.link = None
+        self.description = None
+        # Most recent update of feed, initialised to the Epoch.
+        self.fetched = datetime.datetime.fromtimestamp(0)
+        # A list of Episode objects
+        self.episodes = []
+
+    def fetch(self):
+        fetch_begin = datetime.datetime.utcnow()
+        d = feedparser.parse(self.url)
+        self.title = d.feed.get('title', 'Untitled Podcast')
+        self.link = d.feed.get('link', '')
+        self.description = d.feed.get('description','No description')
+        for i in 
+
+
+
 
 def set_colours():
     curses.init_pair(1, curses.COLOR_CYAN, -1)
@@ -35,14 +72,12 @@ def interface(scr, podcasts):
     curses.use_default_colors()
     set_colours()
 
-    curs = cursor(1,1)
+    curs = Cursor(1,1)
     select_podcast = 0
     select_episode = 0
 
-    key_input = 0
-
 # main interface loop
-    while (key_input != ord('Q')):
+    while True:
 
         # Initialization
         scr.clear()
@@ -52,12 +87,12 @@ def interface(scr, podcasts):
         height = height - player_height
 
         # podcast window dimensions
-        pwin = windowpane(height, width // 3, 0, 0)
+        pwin = Windowpane(height, width // 3, 0, 0)
         # window to hold podcast list
         podlist = scr.subwin(pwin.height,pwin.width,pwin.y,pwin.x)
         
         # episode list window dimensions
-        ewin = windowpane(height, width - pwin.width, 0, pwin.width)
+        ewin = Windowpane(height, width - pwin.width, 0, pwin.width)
         # list of episodes for each podcast
         epslist = scr.subwin(ewin.height,ewin.width,ewin.y,ewin.x)
 
@@ -92,6 +127,8 @@ def interface(scr, podcasts):
                 epslist.addnstr(episodes.index(i)+1,2,i['title'],ewin.width-3)
         epslist.attroff(curses.color_pair(4))
 
+        key_input = scr.getch()
+
         if key_input in (curses.KEY_DOWN, ord('j')):
             curs.y = curs.y + 1
         elif key_input in (curses.KEY_UP, ord('k')):
@@ -102,6 +139,8 @@ def interface(scr, podcasts):
         elif key_input in (curses.KEY_LEFT, ord('h')):
             curs.x = pwin.x
             curs.y = 1
+        elif key_input in (ord('q'),ord('Q')):
+            break
 
         # make sure cursor doesn't leave the window
         curs.x = max(1, curs.x)
@@ -111,7 +150,6 @@ def interface(scr, podcasts):
 
         scr.move(curs.y,curs.x)
         scr.refresh()
-        key_input = scr.getch()
 
 def add_feed(url,podcasts):
     d = feedparser.parse(url)
@@ -150,7 +188,6 @@ def find_storage():
     return store
 
 def main():
-    env = {}
     podcasts = {}
     parser = argparse.ArgumentParser(description="A curses-based podcatcher")
     parser.add_argument("-c", "--config", help="use this config file instead")
